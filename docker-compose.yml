@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  financial-analyst:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: financial-analyst
+    environment:
+      - FILE_SHARE_PATH=/data/financials
+      - VALUATION_PDF_PATH=/data/valuation_parameters.pdf
+      - COMPANY_NAME=${COMPANY_NAME:-Target Company}
+      - OUTPUT_PATH=/data/output
+    volumes:
+      # Mount your local file share directory containing financial documents
+      - ./data/financials:/data/financials:ro
+      # Mount valuation parameters PDF
+      - ./data/valuation_parameters.pdf:/data/valuation_parameters.pdf:ro
+      # Mount output directory for reports
+      - ./data/output:/data/output
+    extra_hosts:
+      # This allows the container to access Ollama running on the host
+      - "host.docker.internal:host-gateway"
+    networks:
+      - financial-network
+    restart: unless-stopped
+
+networks:
+  financial-network:
+    driver: bridge
