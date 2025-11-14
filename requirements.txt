@@ -2,6 +2,8 @@ crewai
 crewai-tools
 langchain
 langchain-community
+langchain-core
+langchain-text-splitters
 chromadb
 PyMuPDF
 Pillow
