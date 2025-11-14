@@ -15,6 +15,9 @@ class FinancialAgents:
     def __init__(self):
         """Initialize the agents factory with LLM configuration"""
         
+        # Set a dummy OpenAI API key to avoid CrewAI errors
+        os.environ["OPENAI_API_KEY"] = "NA"
+        
         # Get model configuration from environment
         analysis_model = os.getenv('ANALYSIS_MODEL', 'llama3.1:8b')
         ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
