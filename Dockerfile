@@ -23,7 +23,7 @@ COPY agents.py .
 COPY tasks.py .
 COPY vision_extractor.py .
 COPY valuation_rag.py .
-
+COPY utils.py .
 # Create directories for data
 RUN mkdir -p /data/financials /data/output
 
