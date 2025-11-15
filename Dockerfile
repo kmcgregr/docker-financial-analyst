@@ -33,8 +33,8 @@ ENV FILE_SHARE_PATH=/data/financials
 ENV VALUATION_PDF_PATH=/data/valuation_parameters.pdf
 ENV OUTPUT_PATH=/data/output
 ENV OLLAMA_BASE_URL=http://host.docker.internal:11434
-ENV VISION_MODEL=qwen2-vl:7b
-ENV ANALYSIS_MODEL=llama3.1:8b
+ENV VISION_MODEL=qwen2.5vl:7b
+ENV ANALYSIS_MODEL=gpt-oss:20b
 ENV EMBEDDING_MODEL=nomic-embed-text
 
 # Run the application
