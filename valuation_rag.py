@@ -11,6 +11,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
 from vision_extractor import VisionDocumentExtractor
+from utils import check_model_availability
 
 
 class ValuationRAG:
@@ -42,6 +43,9 @@ class ValuationRAG:
         
         if not os.path.exists(valuation_pdf_path):
             raise FileNotFoundError(f"Valuation PDF not found: {valuation_pdf_path}")
+        
+        # Check if the embedding model is available
+        check_model_availability(self.embedding_model_name)
         
         # Initialize components
         self.embeddings = OllamaEmbeddings(

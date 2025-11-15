@@ -7,6 +7,7 @@ import os
 import base64
 from typing import Optional
 from langchain_community.llms import Ollama
+from utils import check_model_availability
 
 
 class VisionDocumentExtractor:
@@ -30,6 +31,9 @@ class VisionDocumentExtractor:
         print(f"  Initializing Vision Extractor")
         print(f"    Model: {self.model_name}")
         print(f"    Base URL: {self.base_url}")
+        
+        # Check if the model is available
+        check_model_availability(self.model_name)
         
         self.llm = Ollama(
             model=self.model_name,
