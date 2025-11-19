@@ -6,6 +6,10 @@ import os
 import sys
 from datetime import datetime
 from crewai import Crew, Process
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from agents import FinancialAgents
 from tasks import FinancialTasks
@@ -203,13 +207,21 @@ Report ID: {company_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%
         return report
 
 
+import argparse
+
+
 def main():
     """Main execution function"""
     
+    # Setup command-line argument parsing
+    parser = argparse.ArgumentParser(description="Financial Analysis Agentic Application")
+    parser.add_argument("--company-name", type=str, required=True, help="The name of the company to be analyzed.")
+    args = parser.parse_args()
+
     # Load configuration from environment
     FILE_SHARE_PATH = os.getenv('FILE_SHARE_PATH', '/data/financials')
     VALUATION_PDF_PATH = os.getenv('VALUATION_PDF_PATH', '/data/valuation_parameters.pdf')
-    COMPANY_NAME = os.getenv('COMPANY_NAME', 'Target Company')
+    COMPANY_NAME = args.company_name
     OUTPUT_PATH = os.getenv('OUTPUT_PATH', '/data/output')
     
     print("\n" + "="*80)

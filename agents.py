@@ -8,6 +8,10 @@ from langchain_community.llms import Ollama
 from typing import List
 import os
 from utils import check_model_availability
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class FinancialAgents:

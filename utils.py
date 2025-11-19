@@ -7,6 +7,10 @@ import sys
 import json
 import urllib.request
 from urllib.error import URLError
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 def check_model_availability(model_name: str):
     """
