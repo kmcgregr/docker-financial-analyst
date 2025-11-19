@@ -24,7 +24,7 @@ class FinancialAgents:
         os.environ["OPENAI_API_KEY"] = "NA"
         
         # Get model configuration from environment
-        analysis_model = os.getenv('ANALYSIS_MODEL', 'llama3.1:8b')
+        analysis_model = os.getenv('ANALYSIS_MODEL', 'gpt-oss:20b')
         ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
         
         # Check if the model is available
