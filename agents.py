@@ -25,7 +25,7 @@ class FinancialAgents:
         
         # Get model configuration from environment
         analysis_model = os.getenv('ANALYSIS_MODEL', 'gpt-oss:20b')
-        ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
+        ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
         
         # Check if the model is available
         check_model_availability(analysis_model)

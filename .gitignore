@@ -1,1 +1,3 @@
 .env
+fvenv/
+__pycache__/

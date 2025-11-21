@@ -33,7 +33,7 @@ class VisionDocumentExtractor:
         print(f"    Base URL: {self.base_url}")
         
         # Check if the model is available
-        check_model_availability(self.model_name)
+        #check_model_availability(self.model_name)
         
         self.llm = Ollama(
             model=self.model_name,

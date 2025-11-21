@@ -45,7 +45,7 @@ class ValuationRAG:
             raise FileNotFoundError(f"Valuation PDF not found: {valuation_pdf_path}")
         
         # Check if the embedding model is available
-        check_model_availability(self.embedding_model_name)
+        #check_model_availability(self.embedding_model_name)
         
         # Initialize components
         self.embeddings = OllamaEmbeddings(
