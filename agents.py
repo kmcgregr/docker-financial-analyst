@@ -5,6 +5,7 @@ Defines all specialized AI agents for financial analysis
 
 from crewai import Agent
 from langchain_community.llms import Ollama
+from langchain_openai import ChatOpenAI 
 from typing import List
 import os
 from utils import check_model_availability
@@ -35,7 +36,7 @@ class FinancialAgents:
         check_model_availability(analysis_model)
         
         # Initialize analysis LLM
-        self.analysis_llm = Ollama(
+        self.analysis_llm = ChatOpenAI(
             model=analysis_model,
             base_url=ollama_base_url,
             temperature=0.1  # Low temperature for more consistent financial analysis
