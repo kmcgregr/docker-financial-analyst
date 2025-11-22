@@ -9,6 +9,14 @@ from typing import Optional
 from langchain_community.llms import Ollama
 from utils import check_model_availability
 
+# Try to import PyMuPDF at module level
+try:
+    import fitz  # PyMuPDF
+    FITZ_AVAILABLE = True
+except ImportError:
+    fitz = None
+    FITZ_AVAILABLE = False
+
 
 class VisionDocumentExtractor:
     """
@@ -26,11 +34,15 @@ class VisionDocumentExtractor:
         """
         
         self.model_name = model_name or os.getenv('VISION_MODEL', 'qwen2-vl:7b')
-        self.base_url = base_url or os.getenv('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
+        self.base_url = base_url or os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
         
         print(f"  Initializing Vision Extractor")
         print(f"    Model: {self.model_name}")
         print(f"    Base URL: {self.base_url}")
+        
+        # Check if PyMuPDF is available
+        if not FITZ_AVAILABLE:
+            print(f"    WARNING: PyMuPDF (fitz) not available. PDF extraction may fail.")
         
         # Check if the model is available
         #check_model_availability(self.model_name)
@@ -55,9 +67,7 @@ class VisionDocumentExtractor:
         if not os.path.exists(pdf_path):
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
         
-        try:
-            import fitz  # PyMuPDF
-        except ImportError:
+        if not FITZ_AVAILABLE:
             raise ImportError(
                 "PyMuPDF is required for PDF processing. "
                 "Install with: pip install PyMuPDF"
@@ -175,6 +185,10 @@ Format your response as clear, organized text with all numbers and their labels.
         Returns:
             Extracted content via vision analysis
         """
+        
+        if not FITZ_AVAILABLE:
+            print(f"      Warning: PyMuPDF not available, cannot extract page {page_num + 1}")
+            return ""
         
         try:
             # Render page to image with high resolution

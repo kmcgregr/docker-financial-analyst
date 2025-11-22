@@ -24,8 +24,12 @@ class FinancialAgents:
         os.environ["OPENAI_API_KEY"] = "NA"
         
         # Get model configuration from environment
-        analysis_model = os.getenv('ANALYSIS_MODEL', 'gpt-oss:20b')
+        analysis_model = os.getenv('ANALYSIS_MODEL', 'llama3.1:8b')  # Fixed default
         ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+        
+        # Debug: Print what we got from environment
+        print(f"  DEBUG: ANALYSIS_MODEL from env = '{os.getenv('ANALYSIS_MODEL')}'")
+        print(f"  DEBUG: Using analysis model: {analysis_model}")
         
         # Check if the model is available
         check_model_availability(analysis_model)
