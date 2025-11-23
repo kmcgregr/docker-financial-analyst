@@ -1,10 +1,10 @@
-crewai
-crewai-tools
 langchain
 langchain-community
 langchain-core
 langchain-openai
 langchain-text-splitters
+langchainhub
+langgraph
 chromadb
 PyMuPDF
 Pillow
