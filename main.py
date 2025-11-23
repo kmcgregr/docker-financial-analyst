@@ -6,7 +6,7 @@ import os
 import sys
 from datetime import datetime
 from dotenv import load_dotenv
-from langchain.agents import Tool
+from langchain.tools import Tool
 from typing import List, Dict, Any
 
 # Load environment variables from .env file
