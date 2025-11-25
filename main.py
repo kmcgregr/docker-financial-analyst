@@ -6,7 +6,6 @@ import os
 import sys
 from datetime import datetime
 from dotenv import load_dotenv
-from langchain.tools import Tool
 from typing import List, Dict, Any
 
 # Load environment variables from .env file
@@ -31,28 +30,8 @@ class FinancialAnalysisOrchestrator:
         self.valuation_rag = ValuationRAG(valuation_pdf_path)
         self.agents_factory = FinancialAgents()
         self.tasks_factory = FinancialTasks()
-        
-        # Create tools
-        self.tools = self._create_tools()
 
         print("Components initialized successfully")
-
-    def _create_tools(self) -> List[Tool]:
-        """Create a list of tools for the agents"""
-        
-        tools = [
-            Tool(
-                name="Financial Document Extractor",
-                func=self.vision_extractor.extract_from_pdf,
-                description="Extracts text content from a PDF file.",
-            ),
-            Tool(
-                name="Valuation Parameters Retriever",
-                func=self.valuation_rag.query,
-                description="Retrieves valuation parameters, methodologies, and formulas.",
-            ),
-        ]
-        return tools
 
     def extract_financial_documents(self) -> dict:
         """Extract content from all financial documents in file share"""
@@ -110,9 +89,7 @@ class FinancialAnalysisOrchestrator:
         print("STEP 3: Initializing AI Agents")
         print("-" * 80)
         agents = self.agents_factory.create_agents()
-        print(f"✓ Created {len(agents)} specialized agents:")
-        # for i, agent in enumerate(agents, 1):
-        #     print(f"  {i}. {agent.role}")
+        print(f"✓ Created {len(agents)} specialized agents")
         print()
 
         # Step 4: Create tasks
@@ -137,25 +114,37 @@ class FinancialAnalysisOrchestrator:
         results = []
         context = ""
         for i, (agent, task) in enumerate(zip(agents, tasks)):
-            print(f"--- Running Task {i+1} ---")
+            print(f"--- Running Task {i+1}/{len(tasks)} ---")
             
             # Replace placeholder with the actual context
-            if "{context_placeholder}" in task["input"]:
-                task["input"] = task["input"].replace("{context_placeholder}", context)
+            task_input = task["input"]
+            if "{context_placeholder}" in task_input:
+                task_input = task_input.replace("{context_placeholder}", context)
             
-            # Invoke the agent
-            result = agent.invoke(task)
-            
-            # Append the result to the list of results
-            results.append(result['output'])
-            
-            # Update the context for the next agent
-            context += f"\n\n--- Analysis from previous step ---\n{result['output']}"
-            
-            print(f"--- Task {i+1} Completed ---")
+            try:
+                # Invoke the agent (simple LLMChain now, not AgentExecutor)
+                result = agent.run(input=task_input)
+                
+                # Append the result to the list of results
+                results.append(result)
+                
+                # Update the context for the next agent
+                context += f"\n\n--- Analysis from Task {i+1} ---\n{result}"
+                
+                print(f"✓ Task {i+1} Completed")
+                print()
+                
+            except Exception as e:
+                print(f"✗ Error in Task {i+1}: {e}")
+                # Add error message to results but continue
+                error_msg = f"Task {i+1} encountered an error: {str(e)}"
+                results.append(error_msg)
+                context += f"\n\n--- Task {i+1} Error ---\n{error_msg}"
+                print(f"--- Task {i+1} Failed, continuing... ---")
+                print()
 
         final_result = "\n\n".join(results)
-        print("\n✓ Analysis workflow completed successfully\n")
+        print("\n✓ Analysis workflow completed\n")
 
         # Step 6: Generate final report
         print("STEP 6: Generating Final Report")
@@ -203,8 +192,8 @@ specialized agents:
 5. Investment Advisor - Synthesized findings into actionable recommendation
 
 Technologies Used:
-- Vision Model: Qwen2-VL (document extraction)
-- Analysis Model: Finance-Llama-8B / Llama3.1 (financial analysis)
+- Vision Model: {os.getenv('VISION_MODEL', 'qwen2-vl:7b')} (document extraction)
+- Analysis Model: {os.getenv('ANALYSIS_MODEL', 'llama3.1:8b')} (financial analysis)
 - Framework: LangChain (agent orchestration)
 - RAG System: ChromaDB + Ollama Embeddings (valuation parameters)
 

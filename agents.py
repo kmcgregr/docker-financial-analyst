@@ -2,11 +2,10 @@
 Financial Analysis Agents
 Defines all specialized AI agents for financial analysis using LangChain
 """
-from langchain.agents import AgentExecutor, create_react_agent
-from langchain import hub
 from langchain_core.prompts import PromptTemplate
-from langchain_openai import ChatOpenAI
-from typing import List
+from langchain_community.llms import Ollama
+from langchain.chains import LLMChain
+from typing import List, Dict, Any
 import os
 from utils import check_model_availability
 from dotenv import load_dotenv
@@ -22,7 +21,7 @@ class FinancialAgents:
         """Initialize the agents factory with LLM configuration"""
 
         # Get model configuration from environment
-        analysis_model = os.getenv('ANALYSIS_MODEL', 'llama3.1:8b')  # Fixed default
+        analysis_model = os.getenv('ANALYSIS_MODEL', 'llama3.1:8b')
         ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
 
         # Debug: Print what we got from environment
@@ -32,72 +31,63 @@ class FinancialAgents:
         # Check if the model is available
         check_model_availability(analysis_model)
 
-        # Initialize analysis LLM
-        self.analysis_llm = ChatOpenAI(
+        # Initialize analysis LLM using Ollama
+        self.analysis_llm = Ollama(
             model=analysis_model,
             base_url=ollama_base_url,
             temperature=0.1,  # Low temperature for more consistent financial analysis
-            api_key="NA"  # Set a dummy API key
         )
 
         print(f"  Using analysis model: {analysis_model}")
         print(f"  Ollama URL: {ollama_base_url}")
+        
+        # Store valuation RAG for tool access
+        self.valuation_rag = None
 
-    def _create_agent(self, role: str, goal: str, backstory: str, tools: List) -> AgentExecutor:
-        """Helper function to create a LangChain agent"""
+    def set_valuation_rag(self, valuation_rag):
+        """Set the valuation RAG instance for agents to use"""
+        self.valuation_rag = valuation_rag
 
-        # Create the prompt template
-        template = f"""
-        You are an expert in financial analysis. Your role is {role}.
-        Your main goal is: {goal}.
+    def _create_simple_agent(self, role: str, goal: str, backstory: str) -> LLMChain:
+        """Helper function to create a simple LLM chain agent"""
 
-        Your backstory is:
-        {backstory}
+        # Create a simple prompt template without complex ReAct logic
+        template = """You are an expert in financial analysis. Your role is {role}.
+Your main goal is: {goal}.
 
-        You have access to the following tools:
-        {{tools}}
+Your backstory is:
+{backstory}
 
-        Use the following format:
+IMPORTANT INSTRUCTIONS:
+- Analyze the provided financial data directly
+- Be thorough and detailed in your analysis
+- Use specific numbers and metrics from the data
+- Provide clear, actionable insights
+- Do NOT say you need more information - work with what you have
+- Format your response clearly with sections and bullet points where appropriate
 
-        Question: the input question you must answer
-        Thought: you should always think about what to do
-        Action: the action to take, should be one of [{{tool_names}}]
-        Action Input: the input to the action
-        Observation: the result of the action
-        ... (this Thought/Action/Action Input/Observation can repeat N times)
-        Thought: I now know the final answer
-        Final Answer: the final answer to the original input question
+Question/Task:
+{input}
 
-        Begin!
+Your detailed analysis:"""
 
-        Question: {{input}}
-        Thought: {{agent_scratchpad}}
-        """
+        prompt = PromptTemplate(
+            input_variables=["input"],
+            template=template.format(role=role, goal=goal, backstory=backstory, input="{input}")
+        )
 
-        prompt = PromptTemplate.from_template(template)
-
-        # Get the ReAct prompt
-        # prompt = hub.pull("hwchase17/react") # This is another option
-
-        # Create the ReAct agent
-        agent = create_react_agent(
+        # Create a simple LLM chain
+        chain = LLMChain(
             llm=self.analysis_llm,
-            tools=tools,
-            prompt=prompt
+            prompt=prompt,
+            verbose=True
         )
 
-        # Create the agent executor
-        return AgentExecutor(
-            agent=agent,
-            tools=tools,
-            verbose=True,
-            handle_parsing_errors=True,
-            max_iterations=5
-        )
+        return chain
 
-    def create_document_analyst(self, tools: List = []) -> AgentExecutor:
+    def create_document_analyst(self) -> LLMChain:
         """Create the Document Analyst agent"""
-        return self._create_agent(
+        return self._create_simple_agent(
             role='Financial Document Analyst',
             goal='Extract and organize comprehensive financial data from company reports',
             backstory="""You are an expert financial document analyst with 15 years of
@@ -106,13 +96,12 @@ class FinancialAgents:
             key financial metrics including revenue, expenses, profit margins, cash flows,
             and balance sheet items. You organize data systematically and ensure no
             critical information is missed. You're skilled at identifying trends across
-            multiple reporting periods.""",
-            tools=tools
+            multiple reporting periods."""
         )
 
-    def create_business_analyst(self, tools: List = []) -> AgentExecutor:
+    def create_business_analyst(self) -> LLMChain:
         """Create the Business Model Analyst agent"""
-        return self._create_agent(
+        return self._create_simple_agent(
             role='Business Model Analyst',
             goal='Analyze and clearly explain the company business model, revenue streams, and competitive positioning',
             backstory="""You are a business strategy expert and former management
@@ -122,13 +111,12 @@ class FinancialAgents:
             accessible language. You can identify revenue streams, customer segments,
             competitive advantages (moats), and market positioning. You understand both
             B2B and B2C business models, subscription vs. transactional models, and
-            various monetization strategies.""",
-            tools=tools
+            various monetization strategies."""
         )
 
-    def create_growth_analyst(self, tools: List = []) -> AgentExecutor:
+    def create_growth_analyst(self) -> LLMChain:
         """Create the Growth & Revenue Analyst agent"""
-        return self._create_agent(
+        return self._create_simple_agent(
             role='Growth & Revenue Analyst',
             goal='Analyze revenue growth trends, KPIs, and pricing power to assess business momentum',
             backstory="""You are a quantitative analyst specializing in growth metrics
@@ -138,13 +126,12 @@ class FinancialAgents:
             pricing power through margin analysis. You can identify whether growth is
             organic or inorganic, sustainable or one-time, and evaluate the quality of
             revenue. You understand metrics like customer acquisition cost (CAC),
-            lifetime value (LTV), retention rates, and other industry-specific KPIs.""",
-            tools=tools
+            lifetime value (LTV), retention rates, and other industry-specific KPIs."""
         )
 
-    def create_valuation_specialist(self, tools: List = []) -> AgentExecutor:
+    def create_valuation_specialist(self) -> LLMChain:
         """Create the Valuation Specialist agent"""
-        return self._create_agent(
+        return self._create_simple_agent(
             role='Valuation Specialist',
             goal='Calculate comprehensive company valuation using multiple methodologies and provided parameters',
             backstory="""You are a CFA charterholder and valuation expert with deep
@@ -155,13 +142,12 @@ class FinancialAgents:
             industry, and available data. You can interpret and apply valuation parameters,
             adjust for risk factors, and synthesize multiple approaches into a fair value
             range. You're skilled at explaining the rationale behind valuation assumptions
-            and highlighting key value drivers.""",
-            tools=tools
+            and highlighting key value drivers."""
         )
 
-    def create_investment_advisor(self, tools: List = []) -> AgentExecutor:
+    def create_investment_advisor(self) -> LLMChain:
         """Create the Senior Investment Advisor agent"""
-        return self._create_agent(
+        return self._create_simple_agent(
             role='Senior Investment Advisor',
             goal='Synthesize all analyses into a clear, actionable investment recommendation',
             backstory="""You are a senior investment advisor with 20+ years of experience
@@ -174,16 +160,13 @@ class FinancialAgents:
             always considering both the bull and bear cases. You communicate in a direct,
             actionable manner while being honest about uncertainties and risks. You understand
             that the best investment decisions consider not just current metrics but also
-            future potential and downside protection.""",
-            tools=tools
+            future potential and downside protection."""
         )
 
-    def create_agents(self) -> List[AgentExecutor]:
+    def create_agents(self) -> List[LLMChain]:
         """Create and return all financial analysis agents in execution order"""
         
-        # In this new setup, we might need to define tools for each agent.
-        # For now, we'll pass an empty list of tools.
-        # We will define the tools in the main orchestrator and pass them here.
+        print(f"  Creating simplified agents (no complex tool usage)")
         
         agents = [
             self.create_document_analyst(),

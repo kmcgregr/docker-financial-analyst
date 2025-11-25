@@ -1,6 +1,7 @@
 """
 Valuation RAG System
 Retrieval-Augmented Generation system for valuation parameters and methodologies
+Uses text extraction (no vision model required)
 """
 
 import os
@@ -10,14 +11,19 @@ from langchain_community.vectorstores import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
-from vision_extractor import VisionDocumentExtractor
-from utils import check_model_availability
+# Try to import PyMuPDF for text extraction
+try:
+    import fitz  # PyMuPDF
+    FITZ_AVAILABLE = True
+except ImportError:
+    fitz = None
+    FITZ_AVAILABLE = False
 
 
 class ValuationRAG:
     """
     RAG system for retrieving relevant valuation parameters and methodologies
-    from a reference PDF document
+    from a reference PDF document using text extraction only
     """
     
     def __init__(self, valuation_pdf_path: str, 
@@ -44,10 +50,13 @@ class ValuationRAG:
         if not os.path.exists(valuation_pdf_path):
             raise FileNotFoundError(f"Valuation PDF not found: {valuation_pdf_path}")
         
-        # Check if the embedding model is available
-        #check_model_availability(self.embedding_model_name)
+        if not FITZ_AVAILABLE:
+            raise ImportError(
+                "PyMuPDF is required for PDF text extraction. "
+                "Install with: pip install PyMuPDF"
+            )
         
-        # Initialize components
+        # Initialize embeddings
         self.embeddings = OllamaEmbeddings(
             model=self.embedding_model_name,
             base_url=self.base_url
@@ -59,16 +68,53 @@ class ValuationRAG:
         # Load and index the valuation parameters
         self._load_and_index()
     
+    def _extract_text_from_pdf(self, pdf_path: str) -> str:
+        """
+        Extract text from PDF using PyMuPDF (no vision model needed)
+        
+        Args:
+            pdf_path: Path to the PDF file
+            
+        Returns:
+            Extracted text content
+        """
+        
+        print("  Extracting text from PDF...")
+        
+        try:
+            doc = fitz.open(pdf_path)
+            text_content = []
+            page_count = len(doc)  # Store page count before closing
+            
+            for page_num in range(page_count):
+                page = doc[page_num]
+                
+                # Extract text from page
+                page_text = page.get_text()
+                
+                if page_text.strip():
+                    text_content.append(f"\n--- Page {page_num + 1} ---\n")
+                    text_content.append(page_text)
+            
+            doc.close()
+            
+            full_text = "\n".join(text_content)
+            print(f"  ✓ Extracted {len(full_text)} characters from {page_count} pages")
+            
+            return full_text
+            
+        except Exception as e:
+            print(f"  ✗ Error extracting text from PDF: {e}")
+            raise
+    
     def _load_and_index(self):
         """Load valuation PDF and create vector store index"""
         
-        print("  Loading valuation parameters PDF...")
+        # Extract content from PDF using text extraction (no vision)
+        content = self._extract_text_from_pdf(self.valuation_pdf_path)
         
-        # Extract content from PDF using vision model
-        extractor = VisionDocumentExtractor()
-        content = extractor.extract_from_pdf(self.valuation_pdf_path)
-        
-        print(f"  ✓ Extracted {len(content)} characters from valuation PDF")
+        if not content or len(content.strip()) < 100:
+            raise ValueError("Insufficient text extracted from PDF. The PDF may be image-based or empty.")
         
         # Split content into chunks for better retrieval
         print("  Creating document chunks...")
@@ -232,7 +278,8 @@ class ValuationRAG:
             "total_chunks": len(self.documents),
             "total_characters": sum(len(doc.page_content) for doc in self.documents),
             "embedding_model": self.embedding_model_name,
-            "vectorstore_initialized": self.vectorstore is not None
+            "vectorstore_initialized": self.vectorstore is not None,
+            "extraction_method": "Text extraction (PyMuPDF)"
         }
         
         return stats
