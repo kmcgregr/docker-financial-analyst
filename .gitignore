@@ -1,3 +1,4 @@
 .env
 fvenv/
 __pycache__/
+data/
