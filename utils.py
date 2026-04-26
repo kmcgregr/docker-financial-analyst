@@ -1,60 +1,140 @@
 """
 Utility Functions
-"""
 
-import os
-import sys
+Fixes applied vs original:
+  U1 - OllamaUnavailableError and ModelNotFoundError replace sys.exit(1).
+       Callers can now catch each failure mode independently and handle it
+       with proper error messages and stack traces instead of a silent exit.
+
+  U2 - Substring match replaces exact equality check for model names.
+       Ollama frequently returns names with digest suffixes or quantisation
+       tags (e.g. "qwen2.5vl:7b-q4_K_M"). The original exact match failed
+       on these and silently killed the process even when the model was
+       present and working.
+
+  U3 - 5-second timeout added to the HTTP request. A hung or slow Ollama
+       server previously blocked the process indefinitely at startup with
+       no feedback to the user.
+"""
+from __future__ import annotations
+
 import json
+import os
 import urllib.request
 from urllib.error import URLError
+from urllib.request import urlopen
+
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
 
-def check_model_availability(model_name: str):
+
+# ---------------------------------------------------------------------------
+# U1 — Typed exceptions
+# ---------------------------------------------------------------------------
+
+class OllamaUnavailableError(RuntimeError):
     """
-    Checks if a model is available in the local Ollama instance.
-    
+    Raised when the Ollama server cannot be reached.
+    Covers: connection refused, DNS failure, timeout, non-200 HTTP status.
+    """
+
+
+class ModelNotFoundError(RuntimeError):
+    """
+    Raised when the requested model is not present in the Ollama registry.
+    The exception message includes the list of available models and the
+    exact pull command needed to fix the issue.
+    """
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def check_model_availability(model_name: str) -> None:
+    """
+    Verify that model_name is available in the local Ollama instance.
+
+    U1: Raises typed exceptions instead of calling sys.exit(1).
+        Callers in agents.py and vision_extractor.py catch these and
+        re-raise as RuntimeError with context, so main.py's top-level
+        handler produces a full traceback instead of a silent exit code.
+
+    U2: Uses substring matching so digest-suffixed or quantisation-tagged
+        model names are correctly recognised.
+        e.g. "qwen2.5vl:7b"   matches "qwen2.5vl:7b-q4_K_M"
+             "gemma3:12b"      matches "gemma3:12b-it-qat-Q4_K_M"
+             "nomic-embed-text" matches "nomic-embed-text:latest"
+
+    U3: 5-second connect/read timeout prevents an indefinite hang when
+        Ollama is slow to respond at startup.
+
     Args:
-        model_name (str): The name of the model to check.
-    
+        model_name: The model name as configured in .env
+                    (e.g. "qwen2.5vl:7b", "gemma3:12b").
+
     Raises:
-        SystemExit: If the Ollama server is not reachable or the model is not found.
+        OllamaUnavailableError: Server not reachable or returned non-200.
+        ModelNotFoundError:     model_name not found in the registry.
     """
-    
-    ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
-    
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+    url = f"{ollama_base_url}/api/tags"
+
+    # --- Fetch model list from Ollama ---
     try:
-        # Construct the request to the Ollama API
-        url = f"{ollama_base_url}/api/tags"
         req = urllib.request.Request(url)
-        
-        # Make the request and read the response
-        with urllib.request.urlopen(req) as response:
-            if response.status == 200:
-                data = json.loads(response.read().decode())
-                
-                # Check if the model is in the list of available models
-                for model in data['models']:
-                    if model['name'] == model_name:
-                        return
-                
-                # If the loop completes without finding the model
-                print(f"Error: Model '{model_name}' not found in local Ollama instance.", file=sys.stderr)
-                print(f"Please pull the model using 'ollama pull {model_name}'", file=sys.stderr)
-                sys.exit(1)
-            else:
-                print(f"Error: Failed to get model list from Ollama. Status: {response.status}", file=sys.stderr)
-                sys.exit(1)
-    
-    except URLError as e:
-        print(f"Error: Could not connect to Ollama at {ollama_base_url}", file=sys.stderr)
-        print("Please ensure the Ollama server is running and accessible.", file=sys.stderr)
-        sys.exit(1)
-    except json.JSONDecodeError:
-        print("Error: Failed to parse JSON response from Ollama.", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}", file=sys.stderr)
-        sys.exit(1)
+        # U3: explicit timeout — prevents indefinite hang
+        with urlopen(req, timeout=5) as response:
+            if response.status != 200:
+                raise OllamaUnavailableError(
+                    f"Ollama returned HTTP {response.status} from {url}.\n"
+                    f"  Ensure Ollama is running and accessible."
+                )
+            data = json.loads(response.read().decode())
+
+    except URLError as exc:
+        raise OllamaUnavailableError(
+            f"Could not connect to Ollama at {ollama_base_url}.\n"
+            f"  Ensure the Ollama server is running.\n"
+            f"  Original error: {exc}"
+        ) from exc
+
+    except TimeoutError as exc:
+        raise OllamaUnavailableError(
+            f"Connection to Ollama at {ollama_base_url} timed out after 5 seconds.\n"
+            f"  Check that Ollama is running and not overloaded."
+        ) from exc
+
+    except json.JSONDecodeError as exc:
+        raise OllamaUnavailableError(
+            f"Ollama returned non-JSON from {url}.\n"
+            f"  Original error: {exc}"
+        ) from exc
+
+    # --- U2: substring match against all available model names ---
+    available: list[str] = [m["name"] for m in data.get("models", [])]
+
+    matched_name = next(
+        (name for name in available
+         if model_name in name or name.startswith(model_name)),
+        None,
+    )
+
+    if matched_name is None:
+        available_str = (
+            "\n    ".join(available) if available else "(no models installed)"
+        )
+        raise ModelNotFoundError(
+            f"Model '{model_name}' not found in Ollama registry.\n"
+            f"  Fix: ollama pull {model_name}\n"
+            f"  Available models:\n    {available_str}"
+        )
+
+    # Log when we matched a suffixed variant so it's visible in the output
+    if matched_name != model_name:
+        print(
+            f"  ✓ '{model_name}' matched registry entry '{matched_name}'"
+        )
+    else:
+        print(f"  ✓ Model '{model_name}' confirmed available in Ollama")
