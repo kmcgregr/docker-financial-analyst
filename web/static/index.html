@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Financial Analysis Uploader</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #drop-zone { border: 2px dashed #999; padding: 20px; text-align: center; color: #999; cursor: pointer; }
+    #drop-zone.dragover { border-color: #333; color: #333; }
+    #files-list { margin-top: 10px; }
+    #analyze { margin-top: 10px; }
+    #spinner { display: none; }
+    pre { background: #f8f8f8; padding: 10px; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>Financial Analysis Uploader</h1>
+  <div id="drop-zone">Drag &amp; drop PDF files here or click to select
+    <input type="file" id="file-input" multiple accept=".pdf" style="display:none;">
+  </div>
+  <div id="files-list"></div>
+  <button id="analyze" disabled>Run Analysis</button>
+  <div id="spinner">⏳ Running... please wait</div>
+  <h2>Report</h2>
+  <pre id="report"></pre>
+
+  <script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const filesList = document.getElementById('files-list');
+    const analyzeBtn = document.getElementById('analyze');
+    const spinner = document.getElementById('spinner');
+    const reportBox = document.getElementById('report');
+
+    let files = [];
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      handleFiles(e.dataTransfer.files);
+    });
+
+    fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+    function handleFiles(fileList) {
+      for (let f of fileList) {
+        if (f.type === 'application/pdf') {
+          files.push(f);
+        } else {
+          alert('Only PDF files are accepted.');
+        }
+      }
+      updateUI();
+    }
+
+    function updateUI() {
+      filesList.innerHTML = '';
+      files.forEach(f => {
+        const div = document.createElement('div');
+        div.textContent = f.name;
+        filesList.appendChild(div);
+      });
+      analyzeBtn.disabled = files.length === 0;
+    }
+
+    analyzeBtn.addEventListener('click', async () => {
+      analyzeBtn.disabled = true;
+      spinner.style.display = 'block';
+      reportBox.textContent = '';
+
+      const formData = new FormData();
+      files.forEach(f => formData.append('files', f, f.name));
+
+      try {
+        const res = await fetch('/analyze', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (res.ok) {
+          reportBox.textContent = data.report;
+        } else {
+          reportBox.textContent = 'Error: ' + data.error;
+        }
+      } catch (err) {
+        reportBox.textContent = 'Network error: ' + err.message;
+      }
+
+      spinner.style.display = 'none';
+      analyzeBtn.disabled = false;
+    });
+  </script>
+</body>
+</html>

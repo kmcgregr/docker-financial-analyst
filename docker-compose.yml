@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   app:
     build: .
@@ -14,4 +12,18 @@ services:
     environment:
       OLLAMA_BASE_URL: "http://host.docker.internal:11434"
     tty: true
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    container_name: financial-web
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      FILE_SHARE_PATH: data/financials
+      VALUATION_PDF_PATH: data/valuation_parameters.pdf
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
     restart: unless-stopped
