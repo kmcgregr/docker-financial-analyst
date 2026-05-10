@@ -107,11 +107,13 @@ class FinancialAgents:
             ),
         )
 
-        return LLMChain(
+        chain = LLMChain(
             llm=self.analysis_llm,
             prompt=prompt,
             verbose=True,
         )
+        chain.role = role  # Attach role for pipeline mapping
+        return chain
 
     # ------------------------------------------------------------------
     # Individual agent constructors

@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    container_name: financial-analysis
+    env_file: .env
+    volumes:
+      - type: bind
+        source: ./data
+        target: /app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+    tty: true
+    restart: unless-stopped

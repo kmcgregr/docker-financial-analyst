@@ -440,59 +440,65 @@ Written in professional yet accessible language.""",
                              Called just before the Valuation step runs so the
                              RAG query can be targeted to growth findings.
         """
+        # --- Validate and map agents using explicit role attribute ---
         if len(agents) != 5:
             raise ValueError(
                 f"Expected exactly 5 agents, got {len(agents)}. "
                 "Ensure FinancialAgents.create_agents() returns all 5 agents."
             )
 
-        steps: List[PipelineStep] = [
-            PipelineStep(
-                name="Document Analyst",
-                agent=agents[0],
-                task=self.create_document_extraction_task(
-                    extracted_docs=extracted_docs,
-                    company_name=company_name,
-                ),
-            ),
-            PipelineStep(
-                name="Business Analyst",
-                agent=agents[1],
-                task=self.create_business_analysis_task(
-                    company_name=company_name,
-                    context="{context_placeholder}",
-                ),
-            ),
-            PipelineStep(
-                name="Growth Analyst",
-                agent=agents[2],
-                task=self.create_growth_analysis_task(
-                    company_name=company_name,
-                    context="{context_placeholder}",
-                ),
-            ),
-            PipelineStep(
-                name="Valuation Specialist",
-                agent=agents[3],
-                task=self.create_valuation_task(
-                    company_name=company_name,
-                    context="{context_placeholder}",
-                ),
-                # Fix D: RAG query fn + fallback attached here.
-                # Orchestrator calls _rag_query_fn just before this step runs.
-                _rag_query_fn=rag_query_fn,
-                _fallback_params=valuation_params,
-            ),
-            PipelineStep(
-                name="Investment Advisor",
-                agent=agents[4],
-                task=self.create_investment_recommendation_task(
-                    company_name=company_name,
-                    context="{context_placeholder}",
-                ),
-            ),
-        ]
+        role_to_agent: Dict[str, LLMChain] = {
+            "Financial Document Analyst": None,
+            "Business Model Analyst": None,
+            "Growth & Revenue Analyst": None,
+            "Valuation Specialist": None,
+            "Senior Investment Advisor": None,
+        }
 
+        for agent in agents:
+            role_name = getattr(agent, "role", None)
+            if role_name is None:
+                raise ValueError("Agent missing role attribute")
+            if role_name not in role_to_agent:
+                raise ValueError(
+                    f"Unrecognized agent role: {role_name}. "
+                    "Expected one of: " + ", ".join(role_to_agent.keys())
+                )
+            if role_to_agent[role_name] is not None:
+                raise ValueError(f"Duplicate agent for role: {role_name}")
+            role_to_agent[role_name] = agent
+        missing = [r for r, a in role_to_agent.items() if a is None]
+        if missing:
+            raise ValueError(
+                "Missing required agents for roles: " + ", ".join(missing)
+            )
+
+        # Mapping from role to task creator
+        role_to_task_creator = {
+            "Financial Document Analyst": self.create_document_extraction_task,
+            "Business Model Analyst": self.create_business_analysis_task,
+            "Growth & Revenue Analyst": self.create_growth_analysis_task,
+            "Valuation Specialist": self.create_valuation_task,
+            "Senior Investment Advisor": self.create_investment_recommendation_task,
+        }
+
+        steps: List[PipelineStep] = []
+        for role, task_creator in role_to_task_creator.items():
+            agent = role_to_agent[role]
+            if role == "Financial Document Analyst":
+                task = task_creator(extracted_docs, company_name)
+            else:
+                task = task_creator(company_name, "{context_placeholder}")
+            step = PipelineStep(name=role, agent=agent, task=task)
+            if role == "Valuation Specialist":
+                step._rag_query_fn = rag_query_fn
+                step._fallback_params = valuation_params
+            steps.append(step)
+
+        # Sanity check that each step contains an 'input' key
+        for s in steps:
+            if "input" not in s.task:
+                raise AssertionError("Step missing 'input' key")
         return steps
 
     # ------------------------------------------------------------------
