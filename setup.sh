@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Financial Analysis Agent Setup Script
-# This script helps you set up and run the financial analysis system
+# Sets up a Python virtual environment and validates prerequisites.
 
 set -e
 
@@ -10,39 +10,22 @@ echo "Financial Analysis Agent Setup"
 echo "=========================================="
 echo ""
 
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Function to print colored output
-print_status() {
-    echo -e "${GREEN}[✓]${NC} $1"
-}
+print_status() { echo -e "${GREEN}[✓]${NC} $1"; }
+print_error()  { echo -e "${RED}[✗]${NC} $1"; }
+print_warning(){ echo -e "${YELLOW}[!]${NC} $1"; }
 
-print_error() {
-    echo -e "${RED}[✗]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[!]${NC} $1"
-}
-
-# Check if Docker is installed
+# Check Python
 echo "Checking prerequisites..."
-if ! command -v docker &> /dev/null; then
-    print_error "Docker is not installed. Please install Docker first."
+if ! command -v python3 &> /dev/null; then
+    print_error "Python 3 is not installed. Please install Python 3.11+ first."
     exit 1
 fi
-print_status "Docker is installed"
-
-# Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
-    print_error "Docker Compose is not installed. Please install Docker Compose first."
-    exit 1
-fi
-print_status "Docker Compose is installed"
+print_status "Python is installed ($(python3 --version 2>&1))"
 
 # Check if Ollama is running
 echo ""
@@ -57,7 +40,7 @@ print_status "Ollama is running"
 echo ""
 echo "Checking required Ollama models..."
 
-REQUIRED_MODELS=("qwen2-vl:7b" "nomic-embed-text")
+REQUIRED_MODELS=("qwen2.5vl:7b" "nomic-embed-text")
 MISSING_MODELS=()
 
 for model in "${REQUIRED_MODELS[@]}"; do
@@ -69,17 +52,16 @@ for model in "${REQUIRED_MODELS[@]}"; do
     fi
 done
 
-# Check for finance model (may need alternatives)
-if ollama list | grep -q "finance-llama-8b"; then
-    print_status "Model finance-llama-8b is available"
+ANALYSIS_MODEL="gpt-oss:20b"
+if ollama list | grep -q "$ANALYSIS_MODEL"; then
+    print_status "Model $ANALYSIS_MODEL is available"
 elif ollama list | grep -q "llama3.1:8b"; then
-    print_warning "finance-llama-8b not found, but llama3.1:8b is available (will use as alternative)"
+    print_warning "$ANALYSIS_MODEL not found, but llama3.1:8b is available (update ANALYSIS_MODEL in .env)"
 else
-    print_warning "Neither finance-llama-8b nor llama3.1:8b found"
+    print_warning "Neither $ANALYSIS_MODEL nor llama3.1:8b found"
     MISSING_MODELS+=("llama3.1:8b")
 fi
 
-# Offer to pull missing models
 if [ ${#MISSING_MODELS[@]} -gt 0 ]; then
     echo ""
     print_warning "Missing models: ${MISSING_MODELS[*]}"
@@ -108,38 +90,38 @@ echo ""
 echo "Checking for financial documents..."
 if [ -z "$(ls -A data/financials/*.pdf 2>/dev/null)" ]; then
     print_warning "No PDF files found in data/financials/"
-    echo "  Please add your financial documents (quarterly reports, annual reports) to:"
+    echo "  Add financial documents (quarterly reports, annual reports) to:"
     echo "  $(pwd)/data/financials/"
-    read -p "Press Enter when you've added the files, or Ctrl+C to exit..."
+    read -p "Press Enter when ready, or Ctrl+C to exit..."
 fi
-print_status "Financial documents found"
+print_status "Financial documents checked"
 
 # Check for valuation parameters
 echo ""
 echo "Checking for valuation parameters..."
 if [ ! -f "data/valuation_parameters.pdf" ]; then
     print_warning "Valuation parameters PDF not found"
-    echo "  Please add your valuation parameters PDF to:"
+    echo "  Place your valuation parameters PDF at:"
     echo "  $(pwd)/data/valuation_parameters.pdf"
-    read -p "Press Enter when you've added the file, or Ctrl+C to exit..."
+    read -p "Press Enter when ready, or Ctrl+C to exit..."
 fi
-print_status "Valuation parameters found"
+print_status "Valuation parameters checked"
 
 # Create .env file if it doesn't exist
 if [ ! -f ".env" ]; then
     echo ""
     echo "Creating .env file..."
-    read -p "Enter company name to analyze: " company_name
+    read -p "Enter company name to analyze (optional — auto-detected from PDFs): " company_name
     cat > .env << EOF
-# Company name to analyze
-COMPANY_NAME=${company_name}
+# Company name to analyze (optional — auto-detected if omitted)
+COMPANY_NAME=${company_name:-}
 
 # Ollama connection
-OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_BASE_URL=http://localhost:11434
 
 # Model configurations
-VISION_MODEL=qwen2-vl:7b
-ANALYSIS_MODEL=llama3.1:8b
+VISION_MODEL=qwen2.5vl:7b
+ANALYSIS_MODEL=gpt-oss:20b
 EMBEDDING_MODEL=nomic-embed-text
 EOF
     print_status ".env file created"
@@ -147,15 +129,20 @@ else
     print_status ".env file already exists"
 fi
 
-# Build Docker image
+# Set up virtual environment
 echo ""
-echo "Building Docker image..."
-if docker-compose build; then
-    print_status "Docker image built successfully"
+echo "Setting up Python virtual environment..."
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+    print_status "Virtual environment created"
 else
-    print_error "Failed to build Docker image"
-    exit 1
+    print_status "Virtual environment already exists"
 fi
+
+source venv/bin/activate
+echo "Installing dependencies..."
+pip install -r requirements.txt --quiet
+print_status "Dependencies installed"
 
 # Ask if user wants to run now
 echo ""
@@ -163,21 +150,23 @@ echo "=========================================="
 echo "Setup Complete!"
 echo "=========================================="
 echo ""
-echo "To run the analysis, use:"
-echo "  docker-compose up"
+echo "To run the analysis:"
+echo "  source venv/bin/activate"
+echo "  python -m main"
 echo ""
-echo "To run with a different company:"
-echo "  COMPANY_NAME=\"Apple Inc\" docker-compose up"
+echo "To run the web interface:"
+echo "  source venv/bin/activate"
+echo "  uvicorn web.main:app --reload"
 echo ""
 read -p "Would you like to run the analysis now? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo ""
     echo "Starting analysis..."
-    docker-compose up
+    python -m main
 else
     echo ""
-    echo "You can start the analysis later with: docker-compose up"
+    echo "Run later with: source venv/bin/activate && python -m main"
 fi
 
 echo ""

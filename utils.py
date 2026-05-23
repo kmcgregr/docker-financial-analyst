@@ -78,7 +78,7 @@ def check_model_availability(model_name: str) -> None:
         OllamaUnavailableError: Server not reachable or returned non-200.
         ModelNotFoundError:     model_name not found in the registry.
     """
-    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+    ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
     url = f"{ollama_base_url}/api/tags"
 
     # --- Fetch model list from Ollama ---
@@ -138,3 +138,70 @@ def check_model_availability(model_name: str) -> None:
         )
     else:
         print(f"  ✓ Model '{model_name}' confirmed available in Ollama")
+
+
+# ---------------------------------------------------------------------------
+# Pipeline helper functions (pure Python, no external deps)
+# ---------------------------------------------------------------------------
+
+MAX_CONTEXT_CHARS = 12_000
+
+FALLBACK_VALUATION_QUERY = (
+    "What are all the valuation parameters, methodologies, discount rates, "
+    "and comparable multiples?"
+)
+
+
+def extract_summary_block(result: str) -> str:
+    """Pull the === SUMMARY === block; fall back to last paragraph."""
+    start = result.find("=== SUMMARY ===")
+    end   = result.find("=== END SUMMARY ===")
+    if start != -1 and end != -1:
+        return result[start : end + len("=== END SUMMARY ===")]
+    paragraphs = [p.strip() for p in result.split("\n\n") if p.strip()]
+    return paragraphs[-1] if paragraphs else result[-500:]
+
+
+def cap_context(context: str) -> str:
+    """Truncate context to MAX_CONTEXT_CHARS, keeping the most recent content."""
+    if len(context) <= MAX_CONTEXT_CHARS:
+        return context
+    truncated = context[-MAX_CONTEXT_CHARS:]
+    first_newline = truncated.find("\n")
+    if first_newline != -1:
+        truncated = truncated[first_newline:]
+    return "[Earlier analysis truncated to stay within context limits]\n" + truncated
+
+
+def build_valuation_rag_query(context: str) -> str:
+    """
+    Build a targeted RAG query from the growth analyst's summary block.
+    Falls back to a generic query if parsing fails.
+    """
+    summary  = extract_summary_block(context)
+    metrics  = ""
+    findings = ""
+
+    for line in summary.splitlines():
+        line = line.strip()
+        if line.startswith("KEY_METRICS:"):
+            metrics  = line.replace("KEY_METRICS:",  "").strip()
+        elif line.startswith("KEY_FINDINGS:"):
+            findings = line.replace("KEY_FINDINGS:", "").strip()
+
+    if not metrics and not findings:
+        return FALLBACK_VALUATION_QUERY
+
+    parts = [
+        "What valuation methodologies, discount rates, and multiples apply "
+        "to a company with:"
+    ]
+    if metrics:
+        parts.append(f"these financial metrics: {metrics}")
+    if findings:
+        parts.append(f"and these characteristics: {findings}")
+    parts.append(
+        "Include DCF parameters, comparable company multiples, "
+        "and any relevant benchmarks."
+    )
+    return " ".join(parts)

@@ -4,8 +4,7 @@ Get your financial analysis system up and running in 5 minutes.
 
 ## Prerequisites Checklist
 
-- [ ] Docker installed
-- [ ] Docker Compose installed
+- [ ] Python 3.11+ installed
 - [ ] Ollama installed and running
 - [ ] Financial PDF documents ready
 - [ ] Valuation parameters PDF ready
@@ -16,34 +15,31 @@ Get your financial analysis system up and running in 5 minutes.
 
 ```bash
 # Install required models
-ollama pull qwen2-vl:7b
-ollama pull llama3.1:8b
+ollama pull qwen2.5vl:7b
+ollama pull gpt-oss:20b
 ollama pull nomic-embed-text
 
 # Verify installation
 ollama list
 ```
 
-### 2. Set Up Project Structure
+### 2. Set Up Python Virtual Environment
 
 ```bash
-# Create project directory
-mkdir financial-analyst
-cd financial-analyst
+# Navigate to project directory
+cd docker-financial-analyst
 
-# Create all necessary files (copy from artifacts above)
-# - financial_analysis.py
-# - Dockerfile
-# - docker-compose.yml
-# - requirements.txt
-# - .env.example
-# - setup.sh
+# Create virtual environment
+python -m venv venv
 
-# Make setup script executable
-chmod +x setup.sh
+# Activate it
+# On Windows:
+.\venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
 
-# Run setup
-./setup.sh
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 ### 3. Add Your Documents
@@ -57,56 +53,46 @@ cp /path/to/your/annual_report.pdf data/financials/
 cp /path/to/valuation_params.pdf data/valuation_parameters.pdf
 ```
 
-### 4. Configure Company Name
+### 4. Run Analysis
 
 ```bash
-# Edit .env file
-nano .env
+# Company name is auto-extracted from documents
+python -m main
 
-# Set your company name
-COMPANY_NAME=Apple Inc
+# Or override with an explicit name
+python -m main --company-name "Apple Inc"
 ```
 
-### 5. Run Analysis
-
-```bash
-# Build and run
-docker-compose up
-
-# Or run in background
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-```
-
-### 6. Get Your Report
+### 5. Get Your Report
 
 ```bash
 # Reports are saved in data/output/
 ls -lh data/output/
 
 # View the latest report
-cat data/output/investment_report_*.txt
+cat data/output/investment_report_*.md
 ```
 
 ## Quick Commands
 
 ```bash
-# Run analysis for specific company
-COMPANY_NAME="Microsoft" docker-compose up
+# Activate virtual environment
+.\venv\Scripts\activate          # Windows
+source venv/bin/activate          # macOS/Linux
 
-# Stop the container
-docker-compose down
+# Run analysis
+python -m main
 
-# Rebuild after code changes
-docker-compose build --no-cache
+# Run with explicit company name
+python -m main --company-name "Microsoft"
 
-# View real-time logs
-docker-compose logs -f financial-analyst
+# Run web interface (in another terminal)
+uvicorn web.main:app --reload
 
-# Clean up everything
-docker-compose down -v
+# Run tests
+python -m pytest tests/ -v
+
+# Clean workspace
 rm -rf data/output/*
 ```
 
@@ -125,45 +111,39 @@ curl http://localhost:11434/api/tags
 ### Models not found?
 ```bash
 # Re-pull models
-ollama pull qwen2-vl:7b
-ollama pull llama3.1:8b
+ollama pull qwen2.5vl:7b
+ollama pull gpt-oss:20b
 ollama pull nomic-embed-text
 ```
 
-### Container can't reach host?
+### Module not found errors?
 ```bash
-# Test Docker host connectivity
-docker run --rm alpine ping -c 3 host.docker.internal
-
-# On Linux, you may need to use:
-# docker run --rm --add-host=host.docker.internal:host-gateway alpine ping -c 3 host.docker.internal
-```
-
-### Out of memory?
-```bash
-# Use smaller models
-ollama pull qwen2-vl:2b  # Instead of 7b
-
-# Or increase Docker memory in Docker Desktop settings
+# Ensure virtual environment is activated
+# Ensure all deps are installed
+pip install -r requirements.txt
 ```
 
 ## File Structure at a Glance
 
 ```
-financial-analyst/
-├── financial_analysis.py          ← Main app
-├── Dockerfile                      ← Docker config
-├── docker-compose.yml              ← Docker Compose
-├── requirements.txt                ← Python deps
-├── .env                           ← Your settings
-├── setup.sh                       ← Setup script
+docker-financial-analyst/
+├── main.py                  ← CLI entry point
+├── orchestrator.py          ← Workflow coordinator
+├── agents.py                ← AI agent definitions
+├── tasks.py                 ← Pipeline task definitions
+├── vision_extractor.py      ← PDF extraction
+├── valuation_rag.py         ← Valuation parameter RAG
+├── utils.py                 ← Utility functions
+├── requirements.txt         ← Python deps
+├── .env                     ← Your settings
+├── setup.sh / setup.ps1     ← Setup scripts
 └── data/
-    ├── financials/                ← Put PDFs here
+    ├── financials/          ← Put PDFs here
     │   ├── Q1_2024.pdf
     │   └── annual_2023.pdf
-    ├── valuation_parameters.pdf   ← Your valuation guide
-    └── output/                    ← Reports appear here
-        └── investment_report_*.txt
+    ├── valuation_parameters.pdf
+    └── output/              ← Reports appear here
+        └── investment_report_*.md
 ```
 
 ## What Happens During Analysis?
@@ -205,8 +185,7 @@ Report Generated: 2024-10-29 14:30:22
 1. **Review the report** in `data/output/`
 2. **Adjust settings** in `.env` if needed
 3. **Add more documents** for deeper analysis
-4. **Customize agents** in `financial_analysis.py`
-5. **Run comparative analysis** on multiple companies
+4. **Run comparative analysis** on multiple companies
 
 ## Tips for Best Results
 
@@ -221,19 +200,3 @@ Report Generated: 2024-10-29 14:30:22
 - Mix documents from different companies
 - Trust AI recommendations blindly
 - Skip reviewing the raw data extraction
-
-## Getting Help
-
-- Check main README.md for detailed documentation
-- Review CrewAI docs: https://docs.crewai.com
-- Check Ollama docs: https://ollama.ai/docs
-- Verify Docker setup: https://docs.docker.com
-
-## One-Line Complete Setup
-
-```bash
-# Complete setup in one command (after installing prerequisites)
-git clone <repo> && cd financial-analyst && ./setup.sh && docker-compose up
-```
-
-That's it! You're ready to analyze companies like a pro. 🚀

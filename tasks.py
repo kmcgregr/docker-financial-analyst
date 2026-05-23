@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
-from langchain.chains import LLMChain
+if TYPE_CHECKING:
+    from agents import AnalystAgent
 
 
 # ---------------------------------------------------------------------------
@@ -41,7 +42,7 @@ class PipelineStep:
       _fallback_params — used if rag_query_fn is None or raises
     """
     name:  str
-    agent: LLMChain
+    agent: AnalystAgent
     task:  Dict[str, Any]
 
     # Fix D: attached by create_pipeline() on the valuation step only
@@ -417,7 +418,7 @@ Written in professional yet accessible language.""",
 
     def create_pipeline(
         self,
-        agents: List[LLMChain],
+        agents: List[AnalystAgent],
         extracted_docs: Dict[str, str],
         valuation_params: str,
         company_name: str,
@@ -447,7 +448,7 @@ Written in professional yet accessible language.""",
                 "Ensure FinancialAgents.create_agents() returns all 5 agents."
             )
 
-        role_to_agent: Dict[str, LLMChain] = {
+        role_to_agent: Dict[str, AnalystAgent] = {
             "Financial Document Analyst": None,
             "Business Model Analyst": None,
             "Growth & Revenue Analyst": None,
@@ -456,9 +457,7 @@ Written in professional yet accessible language.""",
         }
 
         for agent in agents:
-            role_name = getattr(agent, "role", None)
-            if role_name is None:
-                raise ValueError("Agent missing role attribute")
+            role_name = agent.role
             if role_name not in role_to_agent:
                 raise ValueError(
                     f"Unrecognized agent role: {role_name}. "

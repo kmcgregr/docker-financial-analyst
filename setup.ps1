@@ -1,7 +1,6 @@
 # Financial Analysis Agent Setup Script for Windows PowerShell
-# This script helps you set up and run the financial analysis system on Windows
+# Sets up a Python virtual environment and validates prerequisites.
 
-# Set error action preference
 $ErrorActionPreference = "Stop"
 
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -9,56 +8,21 @@ Write-Host "Financial Analysis Agent Setup" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Function to print colored output
-function Print-Status {
-    param([string]$Message)
-    Write-Host "[✓] $Message" -ForegroundColor Green
-}
+function Print-Status { param([string]$M); Write-Host "[✓] $M" -ForegroundColor Green }
+function Print-Error  { param([string]$M); Write-Host "[✗] $M" -ForegroundColor Red }
+function Print-Warning{ param([string]$M); Write-Host "[!] $M" -ForegroundColor Yellow }
 
-function Print-Error {
-    param([string]$Message)
-    Write-Host "[✗] $Message" -ForegroundColor Red
-}
-
-function Print-Warning {
-    param([string]$Message)
-    Write-Host "[!] $Message" -ForegroundColor Yellow
-}
-
-# Check if Docker is installed
+# Check Python
 Write-Host "Checking prerequisites..."
 try {
-    $dockerVersion = docker --version 2>$null
-    if ($dockerVersion) {
-        Print-Status "Docker is installed"
+    $pyVersion = python --version 2>&1
+    if ($pyVersion -match "Python 3\.(1[1-9]|[2-9]\d)") {
+        Print-Status "Python is installed ($pyVersion)"
     } else {
-        throw
+        Print-Warning "Python 3.11+ is recommended. Found: $pyVersion"
     }
 } catch {
-    Print-Error "Docker is not installed. Please install Docker Desktop for Windows first."
-    Write-Host "Download from: https://www.docker.com/products/docker-desktop" -ForegroundColor Yellow
-    exit 1
-}
-
-# Check if Docker Compose is installed
-try {
-    $composeVersion = docker-compose --version 2>$null
-    if ($composeVersion) {
-        Print-Status "Docker Compose is installed"
-    } else {
-        throw
-    }
-} catch {
-    Print-Error "Docker Compose is not installed. Please install Docker Compose first."
-    exit 1
-}
-
-# Check if Docker is running
-try {
-    docker ps 2>$null | Out-Null
-    Print-Status "Docker is running"
-} catch {
-    Print-Error "Docker is not running. Please start Docker Desktop."
+    Print-Error "Python 3 is not installed. Please install Python 3.11+ first."
     exit 1
 }
 
@@ -78,12 +42,12 @@ try {
 Write-Host ""
 Write-Host "Checking required Ollama models..."
 
-$REQUIRED_MODELS = @("qwen2-vl:7b", "nomic-embed-text")
+$REQUIRED_MODELS = @("qwen2.5vl:7b", "nomic-embed-text")
 $MISSING_MODELS = @()
 
 try {
     $ollamaList = ollama list 2>$null
-    
+
     foreach ($model in $REQUIRED_MODELS) {
         if ($ollamaList -match $model) {
             Print-Status "Model $model is available"
@@ -92,14 +56,14 @@ try {
             $MISSING_MODELS += $model
         }
     }
-    
-    # Check for finance model (may need alternatives)
-    if ($ollamaList -match "finance-llama-8b") {
-        Print-Status "Model finance-llama-8b is available"
+
+    $ANALYSIS_MODEL = "gpt-oss:20b"
+    if ($ollamaList -match [regex]::Escape($ANALYSIS_MODEL)) {
+        Print-Status "Model $ANALYSIS_MODEL is available"
     } elseif ($ollamaList -match "llama3.1:8b") {
-        Print-Warning "finance-llama-8b not found, but llama3.1:8b is available (will use as alternative)"
+        Print-Warning "$ANALYSIS_MODEL not found, but llama3.1:8b is available (update ANALYSIS_MODEL in .env)"
     } else {
-        Print-Warning "Neither finance-llama-8b nor llama3.1:8b found"
+        Print-Warning "Neither $ANALYSIS_MODEL nor llama3.1:8b found"
         $MISSING_MODELS += "llama3.1:8b"
     }
 } catch {
@@ -107,12 +71,11 @@ try {
     exit 1
 }
 
-# Offer to pull missing models
 if ($MISSING_MODELS.Count -gt 0) {
     Write-Host ""
     Print-Warning "Missing models: $($MISSING_MODELS -join ', ')"
     $response = Read-Host "Would you like to pull missing models now? (y/n)"
-    
+
     if ($response -match "^[Yy]") {
         foreach ($model in $MISSING_MODELS) {
             Write-Host "Pulling $model..." -ForegroundColor Cyan
@@ -146,11 +109,10 @@ $pdfFiles = Get-ChildItem -Path "data\financials\*.pdf" -ErrorAction SilentlyCon
 
 if ($pdfFiles.Count -eq 0) {
     Print-Warning "No PDF files found in data\financials\"
-    Write-Host "  Please add your financial documents (quarterly reports, annual reports) to:" -ForegroundColor Yellow
+    Write-Host "  Add financial documents (quarterly reports, annual reports) to:" -ForegroundColor Yellow
     Write-Host "  $(Get-Location)\data\financials\" -ForegroundColor Yellow
-    Read-Host "Press Enter when you've added the files, or Ctrl+C to exit"
-    
-    # Re-check after user confirmation
+    Read-Host "Press Enter when ready, or Ctrl+C to exit"
+
     $pdfFiles = Get-ChildItem -Path "data\financials\*.pdf" -ErrorAction SilentlyContinue
     if ($pdfFiles.Count -eq 0) {
         Print-Error "Still no PDF files found. Please add documents and run setup again."
@@ -164,11 +126,10 @@ Write-Host ""
 Write-Host "Checking for valuation parameters..."
 if (-not (Test-Path "data\valuation_parameters.pdf")) {
     Print-Warning "Valuation parameters PDF not found"
-    Write-Host "  Please add your valuation parameters PDF to:" -ForegroundColor Yellow
+    Write-Host "  Place your valuation parameters PDF at:" -ForegroundColor Yellow
     Write-Host "  $(Get-Location)\data\valuation_parameters.pdf" -ForegroundColor Yellow
-    Read-Host "Press Enter when you've added the file, or Ctrl+C to exit"
-    
-    # Re-check after user confirmation
+    Read-Host "Press Enter when ready, or Ctrl+C to exit"
+
     if (-not (Test-Path "data\valuation_parameters.pdf")) {
         Print-Error "Valuation parameters PDF still not found. Please add it and run setup again."
         exit 1
@@ -180,44 +141,39 @@ Print-Status "Valuation parameters found"
 if (-not (Test-Path ".env")) {
     Write-Host ""
     Write-Host "Creating .env file..."
-    $companyName = Read-Host "Enter company name to analyze"
-    
+    $companyName = Read-Host "Enter company name to analyze (optional — auto-detected from PDFs)"
+
     $envContent = @"
-# Company name to analyze
+# Company name to analyze (optional — auto-detected if omitted)
 COMPANY_NAME=$companyName
 
 # Ollama connection
-OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_BASE_URL=http://localhost:11434
 
 # Model configurations
-VISION_MODEL=qwen2-vl:7b
-ANALYSIS_MODEL=llama3.1:8b
+VISION_MODEL=qwen2.5vl:7b
+ANALYSIS_MODEL=gpt-oss:20b
 EMBEDDING_MODEL=nomic-embed-text
 "@
-    
+
     $envContent | Out-File -FilePath ".env" -Encoding UTF8
     Print-Status ".env file created"
 } else {
     Print-Status ".env file already exists"
 }
 
-# Build Docker image
+# Set up virtual environment
 Write-Host ""
-Write-Host "Building Docker image..."
-Write-Host "This may take a few minutes..." -ForegroundColor Yellow
-
-try {
-    docker-compose build 2>&1 | Out-Host
-    if ($LASTEXITCODE -eq 0) {
-        Print-Status "Docker image built successfully"
-    } else {
-        throw "Docker build failed"
-    }
-} catch {
-    Print-Error "Failed to build Docker image"
-    Print-Error $_.Exception.Message
-    exit 1
+Write-Host "Setting up Python virtual environment..."
+if (-not (Test-Path "venv")) {
+    python -m venv venv
+    Print-Status "Virtual environment created"
+} else {
+    Print-Status "Virtual environment already exists"
 }
+
+& .\venv\Scripts\pip install -r requirements.txt --quiet
+Print-Status "Dependencies installed"
 
 # Ask if user wants to run now
 Write-Host ""
@@ -225,11 +181,11 @@ Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "Setup Complete!" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "To run the analysis, use:" -ForegroundColor Green
-Write-Host "  docker-compose up" -ForegroundColor White
+Write-Host "To run the analysis:" -ForegroundColor Green
+Write-Host "  .\venv\Scripts\activate; python -m main" -ForegroundColor White
 Write-Host ""
-Write-Host "To run with a different company:" -ForegroundColor Green
-Write-Host "  `$env:COMPANY_NAME=`"Apple Inc`"; docker-compose up" -ForegroundColor White
+Write-Host "To run the web interface:" -ForegroundColor Green
+Write-Host "  .\venv\Scripts\activate; uvicorn web.main:app --reload" -ForegroundColor White
 Write-Host ""
 
 $runNow = Read-Host "Would you like to run the analysis now? (y/n)"
@@ -239,9 +195,9 @@ if ($runNow -match "^[Yy]") {
     Write-Host "Starting analysis..." -ForegroundColor Cyan
     Write-Host "This may take 10-15 minutes depending on document complexity..." -ForegroundColor Yellow
     Write-Host ""
-    
+
     try {
-        docker-compose up
+        & .\venv\Scripts\python -m main
     } catch {
         Print-Error "Error running analysis"
         Print-Error $_.Exception.Message
@@ -249,7 +205,7 @@ if ($runNow -match "^[Yy]") {
     }
 } else {
     Write-Host ""
-    Write-Host "You can start the analysis later with: docker-compose up" -ForegroundColor Yellow
+    Write-Host "Run later with: .\venv\Scripts\activate; python -m main" -ForegroundColor Yellow
 }
 
 Write-Host ""

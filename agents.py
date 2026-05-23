@@ -17,14 +17,22 @@ Fixes applied vs original:
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import List
 
 from dotenv import load_dotenv
-from langchain.chains import LLMChain
 from langchain_community.llms import Ollama
 from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import Runnable
 
 from utils import check_model_availability, OllamaUnavailableError, ModelNotFoundError
+
+
+@dataclass
+class AnalystAgent:
+    """Binds a role name to a Runnable chain (prompt | llm)."""
+    role: str
+    chain: Runnable
 
 load_dotenv()
 
@@ -62,7 +70,9 @@ class FinancialAgents:
         self.analysis_llm = Ollama(
             model=analysis_model,
             base_url=ollama_base_url,
-            temperature=0.1,   # low temperature for consistent financial analysis
+            temperature=0.1,
+            num_predict=4096,
+            timeout=180,
         )
 
         # Available for optional injection by the orchestrator
@@ -78,8 +88,8 @@ class FinancialAgents:
 
     def _create_simple_agent(
         self, role: str, goal: str, backstory: str
-    ) -> LLMChain:
-        """Create a simple LLMChain agent with a fixed prompt template."""
+    ) -> AnalystAgent:
+        """Create an agent (prompt | llm runnable) wrapped with its role name."""
 
         template = (
             "You are an expert in financial analysis. Your role is {role}.\n"
@@ -107,19 +117,14 @@ class FinancialAgents:
             ),
         )
 
-        chain = LLMChain(
-            llm=self.analysis_llm,
-            prompt=prompt,
-            verbose=True,
-        )
-        chain.role = role  # Attach role for pipeline mapping
-        return chain
+        chain = prompt | self.analysis_llm
+        return AnalystAgent(role=role, chain=chain)
 
     # ------------------------------------------------------------------
     # Individual agent constructors
     # ------------------------------------------------------------------
 
-    def create_document_analyst(self) -> LLMChain:
+    def create_document_analyst(self) -> AnalystAgent:
         """Agent 1 — Financial Document Analyst."""
         return self._create_simple_agent(
             role="Financial Document Analyst",
@@ -135,7 +140,7 @@ class FinancialAgents:
             ),
         )
 
-    def create_business_analyst(self) -> LLMChain:
+    def create_business_analyst(self) -> AnalystAgent:
         """Agent 2 — Business Model Analyst."""
         return self._create_simple_agent(
             role="Business Model Analyst",
@@ -156,7 +161,7 @@ class FinancialAgents:
             ),
         )
 
-    def create_growth_analyst(self) -> LLMChain:
+    def create_growth_analyst(self) -> AnalystAgent:
         """Agent 3 — Growth & Revenue Analyst."""
         return self._create_simple_agent(
             role="Growth & Revenue Analyst",
@@ -177,7 +182,7 @@ class FinancialAgents:
             ),
         )
 
-    def create_valuation_specialist(self) -> LLMChain:
+    def create_valuation_specialist(self) -> AnalystAgent:
         """Agent 4 — Valuation Specialist."""
         return self._create_simple_agent(
             role="Valuation Specialist",
@@ -199,7 +204,7 @@ class FinancialAgents:
             ),
         )
 
-    def create_investment_advisor(self) -> LLMChain:
+    def create_investment_advisor(self) -> AnalystAgent:
         """Agent 5 — Senior Investment Advisor."""
         return self._create_simple_agent(
             role="Senior Investment Advisor",
@@ -222,7 +227,7 @@ class FinancialAgents:
     # Factory — returns all 5 agents in pipeline order
     # ------------------------------------------------------------------
 
-    def create_agents(self) -> List[LLMChain]:
+    def create_agents(self) -> List[AnalystAgent]:
         """
         Create and return all financial analysis agents in execution order.
 

@@ -35,12 +35,12 @@ class ValuationRAG:
         Args:
             valuation_pdf_path: Path to the PDF containing valuation parameters
             embedding_model: Name of embedding model (default: from env or nomic-embed-text)
-            ollama_base_url: Ollama base URL (default: from env or host.docker.internal:11434)
+            ollama_base_url: Ollama base URL (default: from env or localhost:11434)
         """
         
         self.valuation_pdf_path = valuation_pdf_path
         self.embedding_model_name = embedding_model or os.getenv('EMBEDDING_MODEL', 'nomic-embed-text')
-        self.base_url = ollama_base_url or os.getenv('OLLAMA_BASE_URL', 'http://host.docker.internal:11434')
+        self.base_url = ollama_base_url or os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
         
         print(f"  Initializing Valuation RAG System")
         print(f"    PDF: {valuation_pdf_path}")
