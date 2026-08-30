@@ -1,4 +1,6 @@
 .env
-fvenv/
+!.env.example
+.fenv/
+venv/
 __pycache__/
 data/
